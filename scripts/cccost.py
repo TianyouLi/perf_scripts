@@ -17,6 +17,7 @@ sys.path.append(os.environ['PERF_EXEC_PATH'] + \
 
 from perf_trace_context import *
 from Core import *
+from EventClass import *
 
 
 def trace_begin():
@@ -26,8 +27,8 @@ def trace_end():
 	print("in trace_end")
 
 def trace_unhandled(event_name, context, event_fields_dict, perf_sample_dict):
-		print(get_dict_as_string(event_fields_dict))
-		print('Sample: {'+get_dict_as_string(perf_sample_dict['sample'], ', ')+'}')
+	print(get_dict_as_string(event_fields_dict))
+	print('Sample: {'+get_dict_as_string(perf_sample_dict['sample'], ', ')+'}')
 
 def print_header(event_name, cpu, secs, nsecs, pid, comm):
 	print("%-20s %5u %05u.%09u %8u %-20s " % \
@@ -35,3 +36,25 @@ def print_header(event_name, cpu, secs, nsecs, pid, comm):
 
 def get_dict_as_string(a_dict, delimiter=' '):
 	return delimiter.join(['%s=%s'%(k,str(v))for k,v in sorted(a_dict.items())])
+
+def process_event(param_dict):
+	event_attr = param_dict["attr"]
+	sample     = param_dict["sample"]
+	raw_buf    = param_dict["raw_buf"]
+	comm       = param_dict["comm"]
+	name       = param_dict["ev_name"]
+
+    # Symbol and dso info are not always resolved
+	if ("dso" in param_dict):
+		dso = param_dict["dso"]
+	else:
+		dso = "Unknown_dso"
+
+	if ("symbol" in param_dict):
+		symbol = param_dict["symbol"]
+	else:
+		symbol = "Unknown_symbol"
+
+    # Create the event object and insert it to the right table in database
+	event = create_event(name, comm, dso, symbol, raw_buf)
+	event.show()

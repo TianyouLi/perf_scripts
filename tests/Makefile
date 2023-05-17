@@ -1,6 +1,6 @@
 all: perf
 
-spawn:
+spawn: 
 	gcc -O2 -g -o spawn spawn.c
 
 perf: spawn
@@ -15,6 +15,6 @@ clean_spawn:
 	rm spawn -rf
 
 
-test: perf
+test: 
 	perf script -s python:../scripts/cccost.py report
 
