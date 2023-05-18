@@ -19,12 +19,16 @@ from perf_trace_context import *
 from Core import *
 from EventClass import *
 
+events = dict()
 
 def trace_begin():
-	print("in trace_begin")
+  pass
 
 def trace_end():
-	print("in trace_end")
+  for name, el in events.items():
+    print(name, el["total"])
+    
+
 
 def trace_unhandled(event_name, context, event_fields_dict, perf_sample_dict):
 	print(get_dict_as_string(event_fields_dict))
@@ -37,14 +41,14 @@ def print_header(event_name, cpu, secs, nsecs, pid, comm):
 def get_dict_as_string(a_dict, delimiter=' '):
 	return delimiter.join(['%s=%s'%(k,str(v))for k,v in sorted(a_dict.items())])
 
-def process_event(param_dict):
+def create_event_with_more_info(param_dict):
 	event_attr = param_dict["attr"]
 	sample     = param_dict["sample"]
 	raw_buf    = param_dict["raw_buf"]
 	comm       = param_dict["comm"]
 	name       = param_dict["ev_name"]
 
-    # Symbol and dso info are not always resolved
+  # Symbol and dso info are not always resolved
 	if ("dso" in param_dict):
 		dso = param_dict["dso"]
 	else:
@@ -55,6 +59,19 @@ def process_event(param_dict):
 	else:
 		symbol = "Unknown_symbol"
 
-    # Create the event object and insert it to the right table in database
+  # Create the event object and insert it to the right table in database
 	event = create_event(name, comm, dso, symbol, raw_buf)
-	event.show()
+	event.sample = sample
+	event.attr = event_attr
+	return event
+
+
+def process_event(param_dict):
+  global events
+  
+  event = create_event_with_more_info(param_dict)
+  if event.name not in events:
+    events[event.name] = {"total":event.sample["period"], "el": [event]}
+  else:
+    events[event.name]["total"] += event.sample["period"]
+    events[event.name]["el"].append(event)
