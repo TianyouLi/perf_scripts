@@ -13,7 +13,7 @@ import os
 import sys
 
 sys.path.append(os.environ['PERF_EXEC_PATH'] + \
-	'/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
+  '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
 
 from perf_trace_context import *
 from Core import *
@@ -25,45 +25,85 @@ def trace_begin():
   pass
 
 def trace_end():
-  for name, el in events.items():
-    print(name, el["total"])
-    
+  eview = EventView(events)
+  eview.print_summary()
 
+    
+class EventView(object):
+  def __init__(self, events):
+    self.events = events
+    self.ipc_map = dict()
+
+  def get_ipc(self,symbol):
+    if symbol == "total":
+      return self.get_total_ipc()
+
+  def get_total_ipc(self):
+    if "total" not in self.ipc_map:
+      self.ipc_map["total"] = self.get_total_instructions() / self.get_total_cycles()
+
+    return self.ipc_map["total"]
+      
+  def get_total_instructions(self):
+    for symbol in ["instructions", "instructions:pp"]:
+        insts = self.get_total(symbol)
+        if insts != 0:
+          return insts
+    return 0
+  
+  def get_total_cycles(self):
+    for symbol in ["cycles", "cycles:pp"]:
+      cycles = self.get_total(symbol)
+      if cycles != 0:
+        return cycles
+    return 0
+    
+  def get_total(self, symbol):
+    if symbol in self.events:
+      return self.events[symbol]["total"]
+    return 0
+  
+  def print_summary(self):
+    for key in self.events:
+      print("%-20s %8u" % (key, self.events[key]["total"]))
+
+  
 
 def trace_unhandled(event_name, context, event_fields_dict, perf_sample_dict):
-	print(get_dict_as_string(event_fields_dict))
-	print('Sample: {'+get_dict_as_string(perf_sample_dict['sample'], ', ')+'}')
+  print(get_dict_as_string(event_fields_dict))
+  print('Sample: {'+get_dict_as_string(perf_sample_dict['sample'], ', ')+'}')
 
 def print_header(event_name, cpu, secs, nsecs, pid, comm):
-	print("%-20s %5u %05u.%09u %8u %-20s " % \
-	(event_name, cpu, secs, nsecs, pid, comm), end="")
+  print("%-20s %5u %05u.%09u %8u %-20s " % \
+  (event_name, cpu, secs, nsecs, pid, comm), end="")
 
 def get_dict_as_string(a_dict, delimiter=' '):
-	return delimiter.join(['%s=%s'%(k,str(v))for k,v in sorted(a_dict.items())])
+  return delimiter.join(['%s=%s'%(k,str(v))for k,v in sorted(a_dict.items())])
 
 def create_event_with_more_info(param_dict):
-	event_attr = param_dict["attr"]
-	sample     = param_dict["sample"]
-	raw_buf    = param_dict["raw_buf"]
-	comm       = param_dict["comm"]
-	name       = param_dict["ev_name"]
+  event_attr = param_dict["attr"]
+  sample     = param_dict["sample"]
+  raw_buf    = param_dict["raw_buf"]
+  comm       = param_dict["comm"]
+  name       = param_dict["ev_name"]
 
   # Symbol and dso info are not always resolved
-	if ("dso" in param_dict):
-		dso = param_dict["dso"]
-	else:
-		dso = "Unknown_dso"
+  if ("dso" in param_dict):
+    dso = param_dict["dso"]
+  else:
+    dso = "Unknown_dso"
 
-	if ("symbol" in param_dict):
-		symbol = param_dict["symbol"]
-	else:
-		symbol = "Unknown_symbol"
+  if ("symbol" in param_dict):
+    symbol = param_dict["symbol"]
+  else:
+    symbol = "Unknown_symbol"
 
   # Create the event object and insert it to the right table in database
-	event = create_event(name, comm, dso, symbol, raw_buf)
-	event.sample = sample
-	event.attr = event_attr
-	return event
+  event = create_event(name, comm, dso, symbol, event_attr)
+  event.sample = sample
+  event.attr = event_attr
+  event.raw_buf = raw_buf
+  return event
 
 
 def process_event(param_dict):
