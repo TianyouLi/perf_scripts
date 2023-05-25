@@ -27,8 +27,16 @@ def trace_begin():
 def trace_end():
   eview = EventView(events)
   eview.print_summary()
-
+  
+  # find_latency = lambda e : print(e.sample["weight"])
+  # eview.foreach("cpu/mem-loads,ldlat=30/P", find_latency)
+  # eview.foreach("cpu/mem-stores/P", find_latency)
+  # eview.foreach("cycles:pp", find_latency)
     
+def trace_unhandled(event_name, context, event_fields_dict, perf_sample_dict):
+  print(get_dict_as_string(event_fields_dict))
+  print('Sample: {'+get_dict_as_string(perf_sample_dict['sample'], ', ')+'}')
+  
 class EventView(object):
   def __init__(self, events):
     self.events = events
@@ -67,11 +75,12 @@ class EventView(object):
     for key in self.events:
       print("%-20s %8u" % (key, self.events[key]["total"]))
 
-  
+  def foreach(self, symbol, doit):
+    if symbol not in self.events:
+      return
+    for event in self.events[symbol]["el"]:
+      doit(event)
 
-def trace_unhandled(event_name, context, event_fields_dict, perf_sample_dict):
-  print(get_dict_as_string(event_fields_dict))
-  print('Sample: {'+get_dict_as_string(perf_sample_dict['sample'], ', ')+'}')
 
 def print_header(event_name, cpu, secs, nsecs, pid, comm):
   print("%-20s %5u %05u.%09u %8u %-20s " % \
