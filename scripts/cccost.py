@@ -11,6 +11,9 @@ from __future__ import print_function
 
 import os
 import sys
+import argparse 
+import debugpy as dbg
+
 
 sys.path.append(os.environ['PERF_EXEC_PATH'] + \
   '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
@@ -20,6 +23,11 @@ from Core import *
 from EventClass import *
 
 events = dict()
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--debug", help="enable debug host during script processing",
+                    action="store_true")
+args = parser.parse_args()
 
 def trace_begin():
   pass
@@ -117,7 +125,12 @@ def create_event_with_more_info(param_dict):
 
 def process_event(param_dict):
   global events
-  
+
+  if args.debug:
+    dbg.listen(("localhost",5678))
+    dbg.wait_for_client()
+    dbg.breakpoint()
+    
   event = create_event_with_more_info(param_dict)
   if event.name not in events:
     events[event.name] = {"total":event.sample["period"], "el": [event]}
