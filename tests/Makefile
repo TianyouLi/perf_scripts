@@ -18,5 +18,5 @@ clean_spawn:
 test: 
 	perf script -s python:../scripts/cccost.py -i perf.data.spawn
 debug:
-	perf script -s python:../scripts/cccost.py -i perf.data.spawn -- -d
+	perf script -s python:../scripts/cccost.py -i perf.data.spawn -- -d -l 10.239.147.41 -p 5678
 

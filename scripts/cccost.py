@@ -12,6 +12,7 @@ from __future__ import print_function
 import os
 import sys
 import argparse 
+import ipaddress
 import debugpy as dbg
 
 
@@ -25,12 +26,31 @@ from EventClass import *
 events = dict()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-d", "--debug", help="enable debug host during script processing",
-                    action="store_true")
+parser.add_argument("-d", "--debug",
+                    help="enable debug host during script processing",
+                    action="store_true",
+                    dest="debug")
+parser.add_argument("-l", "--debug-ip",
+                    help="debuger listen ip address",
+                    action="store",
+                    dest="debug_ip",
+                    type=ipaddress.ip_address,
+                    default="127.0.0.1")
+parser.add_argument("-p", "--debug-port",
+                    help="debuger listen port",
+                    action="store",
+                    dest="debug_port",
+                    type=int,
+                    default="5678")
+                    
+
 args = parser.parse_args()
 
 def trace_begin():
-  pass
+  if args.debug:
+    dbg.listen((str(args.debug_ip),args.debug_port))
+    dbg.wait_for_client()
+    dbg.breakpoint()
 
 def trace_end():
   eview = EventView(events)
@@ -103,6 +123,7 @@ def create_event_with_more_info(param_dict):
   raw_buf    = param_dict["raw_buf"]
   comm       = param_dict["comm"]
   name       = param_dict["ev_name"]
+  callchain  = param_dict["callchain"]
 
   # Symbol and dso info are not always resolved
   if ("dso" in param_dict):
@@ -120,18 +141,16 @@ def create_event_with_more_info(param_dict):
   event.sample = sample
   event.attr = event_attr
   event.raw_buf = raw_buf
+  event.callchain = callchain
   return event
 
-
+def create_callgraph_for_function(symbol)
+  pass
 def process_event(param_dict):
   global events
-
-  if args.debug:
-    dbg.listen(("localhost",5678))
-    dbg.wait_for_client()
-    dbg.breakpoint()
     
   event = create_event_with_more_info(param_dict)
+  graph = create_callgraph_for_function("native_queued_spin_lock_slowpath")
   if event.name not in events:
     events[event.name] = {"total":event.sample["period"], "el": [event]}
   else:
