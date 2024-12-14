@@ -13,7 +13,10 @@ import os
 import sys
 import argparse 
 import ipaddress
+import pprint
 import debugpy as dbg
+
+from typing import List
 
 
 sys.path.append(os.environ['PERF_EXEC_PATH'] + \
@@ -42,7 +45,18 @@ parser.add_argument("-p", "--debug-port",
                     dest="debug_port",
                     type=int,
                     default="5678")
-                    
+parser.add_argument("-s", "--symbol",
+                    help="symbol to parse and analysis",
+                    action="store",
+                    dest="symbol",
+                    type=str,
+                    default="native_queued_spin_lock_slowpath")
+parser.add_argument("-e", "--event-type",
+                    help="event type to analysis",
+                    action="store",
+                    dest="event_type",
+                    type=str,
+                    default="cycles:pp")              
 
 args = parser.parse_args()
 
@@ -51,10 +65,6 @@ def trace_begin():
     dbg.listen((str(args.debug_ip),args.debug_port))
     dbg.wait_for_client()
     dbg.breakpoint()
-
-def trace_end():
-  eview = EventView(events)
-  eview.print_summary()
   
   # find_latency = lambda e : print(e.sample["weight"])
   # eview.foreach("cpu/mem-loads,ldlat=30/P", find_latency)
@@ -139,20 +149,87 @@ def create_event_with_more_info(param_dict):
   # Create the event object and insert it to the right table in database
   event = create_event(name, comm, dso, symbol, event_attr)
   event.sample = sample
+  event.cycles = event.sample["period"]
   event.attr = event_attr
   event.raw_buf = raw_buf
   event.callchain = callchain
   return event
 
-def create_callgraph_for_function(symbol)
-  pass
+
+class CallGraphNode(object):
+  def __init__(self, symbol: str, cycles: int, level: int):
+    self.symbol: str = symbol
+    self.cycles: int = cycles
+    self.level: int = level
+    self.callers: List[CallGraphNode] = []
+
+  def __str__(self):
+    if len(self.callers) > 0:
+      caller_str = "  " * self.level + str(self.callers)[1:-1]
+    else:
+      caller_str = ""
+    return self.symbol + f": {self.cycles}" + "\n" + caller_str
+
+  def __repr__(self):
+    return str(self) 
+
+  def find_caller(self, symbol: str) -> 'CallGraphNode':
+    return next((node for node in self.callers if node.symbol == symbol), None)
+  
+  def add_caller(self, symbol: str, cycles: int) -> 'CallGraphNode':
+    caller = self.find_caller(symbol)
+    if caller is None:
+      caller = CallGraphNode(symbol, cycles, self.level +1)
+      self.callers.append(caller)
+    else:
+      caller.cycles += cycles
+    
+    return caller
+
+class CallGraph(object):
+  def __init__(self, symbol: str):
+    self.symbol: str = symbol
+    self.root: CallGraphNode = None
+  
+  def __str__(self):
+    return f"Symbol: {self.symbol}\n"+ str(self.root)
+
+  def process_event(self, event):
+    if self.root is None:
+      self.root = CallGraphNode(event.symbol, event.cycles, 0)
+    else:
+      self.root.cycles += event.cycles
+    # add callchain
+    node: CallGraphNode = self.root
+    for item in event.callchain[1:]:
+      symbol = hex(item['ip'])
+      if item['sym'] is not None:
+        symbol = item['sym']['name']
+      node = node.add_caller(symbol, event.cycles)
+
+graph: CallGraph = None
+def create_callgraph_for_function(event, symbol: str):
+  global graph 
+  if graph is None:
+    graph = CallGraph(symbol)
+  if event.symbol == symbol:
+    graph.process_event(event)
+
+  
+  
 def process_event(param_dict):
   global events
     
   event = create_event_with_more_info(param_dict)
-  graph = create_callgraph_for_function("native_queued_spin_lock_slowpath")
+  if event.symbol == args.symbol and event.name == args.event_type:
+    graph = create_callgraph_for_function(event, args.symbol)
   if event.name not in events:
     events[event.name] = {"total":event.sample["period"], "el": [event]}
   else:
     events[event.name]["total"] += event.sample["period"]
     events[event.name]["el"].append(event)
+
+def trace_end():
+  eview = EventView(events)
+  eview.print_summary()
+  print(graph)
