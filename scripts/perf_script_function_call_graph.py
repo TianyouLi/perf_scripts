@@ -275,7 +275,7 @@ class GraphFileHtmlSankeyRender(object):
       // Set chart options
       var options = {
         width: 2048,
-        height: 2048,
+        height: 1024,
         sankey: {
           node: {
             label: {
@@ -340,6 +340,8 @@ class GraphFileHtmlSankeyRender(object):
     callees = root.callees
 
     for item in callees:
+      if root.cycles / item.cycles > 1000:
+        continue
       self.generate_one_row(item, root, item.cycles)
       self.generate_callee_row(item)
       self.sources.clear()
@@ -348,6 +350,8 @@ class GraphFileHtmlSankeyRender(object):
     callers = root.callers
 
     for item in callers:
+      if root.cycles / item.cycles > 1000:
+        continue
       self.generate_one_row(root, item, item.cycles)
       self.generate_caller_row(item)
       self.sources.clear()
