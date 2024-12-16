@@ -15,9 +15,10 @@ import argparse
 import ipaddress
 import pprint
 import debugpy as dbg
+import cxxfilt
 
 from typing import List
-
+from enum import Enum
 
 sys.path.append(os.environ['PERF_EXEC_PATH'] + \
   '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
@@ -57,6 +58,14 @@ parser.add_argument("-e", "--event-type",
                     dest="event_type",
                     type=str,
                     default="cycles:pp")              
+
+parser.add_argument("-g", "--graph",
+                    help="generate the graph for particular function, \
+                      with the file name specified, default as graph.html",
+                    action="store",
+                    dest="graphfilename",
+                    type=str,
+                    default="graph.html")
 
 args = parser.parse_args()
 
@@ -120,7 +129,7 @@ class CallGraphNode(object):
     else:
       callee_str = ""
 
-    return callee_str + "  " * self.level + self.symbol + ":" + str(self.cycles) + "\n" + caller_str 
+    return callee_str + "  " * self.level + cxxfilt.demangle(self.symbol) + ":" + str(self.cycles) + "\n" + caller_str 
 
   def __repr__(self):
     return str(self) 
@@ -165,7 +174,8 @@ class CallGraph(object):
   def __str__(self):
     return f"Symbol: {self.symbol}\n"+ str(self.root)
 
-  def find_symbol_index_in_callchain(self, event) -> int:
+  def find_symbol_index_in_callchain(self, event) -> List[int]:
+    result: List[int] = []
     for index, item in enumerate(event.callchain):
       if 'sym' in item and item['sym'] is not None:
         symbol = item['sym']['name']
@@ -173,31 +183,51 @@ class CallGraph(object):
         symbol = hex(item['ip'])
 
       if symbol == self.root.symbol:
-        return index
-    raise LookupError(f"Can not find the {self.root.symbol} in callchain!")
+        result.append(index)
+    return result
+
+  def add_caller_nodes(self, callerchain: List, cycles: int):
+    node: CallGraphNode = self.root
+    for item in callerchain:
+        if 'sym' in item and item['sym'] is not None:
+          symbol = item['sym']['name']
+        else:
+          symbol = hex(item['ip'])
+        node = node.add_caller(symbol, cycles)
+  def add_callee_nodes(self, calleechain: List, cycles: int):
+    node: CallGraphNode = self.root
+    for item in reversed(calleechain):
+      if 'sym' in item and item['sym'] is not None:
+        symbol = item['sym']['name']
+      else:
+        symbol = hex(item['ip'])
+      node = node.add_callee(symbol, cycles)  
 
   def process_event(self, event):
     if self.root is None:
       self.root = CallGraphNode(event.symbol, event.cycles, 0)
     else:
       self.root.cycles += event.cycles
-    symbol_index = self.find_symbol_index_in_callchain(event)
-    # add caller
-    node: CallGraphNode = self.root
-    for item in event.callchain[symbol_index+1:]:
-      if 'sym' in item and item['sym'] is not None:
-        symbol = item['sym']['name']
+    symbol_indexes = self.find_symbol_index_in_callchain(event)
+    if len(symbol_indexes) == 1:
+      symbol_indexes.append(len(event.callchain) +1)
+
+    prev_index = 0 
+    cur_index = symbol_indexes[0]
+    for i, cur_index in enumerate(symbol_indexes):
+      if i < (len(symbol_indexes) -1):
+        next_index = symbol_indexes[i+1]
       else:
-        symbol = hex(item['ip'])
-      node = node.add_caller(symbol, event.cycles)
-    # add callee
-    node: CallGraphNode = self.root
-    for item in reversed(event.callchain[:symbol_index]):
-      if 'sym' in item and item['sym'] is not None:
-        symbol = item['sym']['name']
-      else:
-        symbol = hex(item['ip'])
-      node = node.add_callee(symbol, event.cycles)  
+        next_index = len(event.callchain) +1
+      # add caller
+      callerchain = event.callchain[cur_index+1:next_index-1]
+      self.add_caller_nodes(callerchain, event.cycles)
+      if prev_index == 0:
+        # add callee
+        calleechain = event.callchain[prev_index:cur_index]
+        self.add_callee_nodes(calleechain, event.cycles)
+      prev_index = cur_index +1
+      
 
 graph: CallGraph = None
 def create_callgraph_for_function(event, symbol: str):
@@ -219,5 +249,119 @@ def process_event(param_dict):
     events[event.name]["total"] += event.sample["period"]
     events[event.name]["el"].append(event)
 
+class GraphFileHtmlSankeyRender(object):
+
+  html_header = """
+  <html>                                                                                     
+    <body>                                                                                   
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>  
+
+    <div id="sankey_multiple" style="width: 900px; height: 300px;"></div>                    
+
+    <script type="text/javascript">
+      google.charts.load("current", {packages:["sankey"]});
+      google.charts.setOnLoadCallback(drawChart);
+      function drawChart() {
+        var data = new google.visualization.DataTable();
+        data.addColumn('string', 'From');
+        data.addColumn('string', 'To');
+        data.addColumn('number', 'Weight');
+        data.addRows([
+  """
+
+  html_footer = """
+    ]);
+
+      // Set chart options
+      var options = {
+        width: 2048,
+        height: 2048,
+        sankey: {
+          node: {
+            label: {
+              fontSize: 12
+            }
+          }
+        },
+      };
+
+      // Instantiate and draw our chart, passing in some options.
+      var chart = new google.visualization.Sankey(document.getElementById('sankey_multiple'));
+      chart.draw(data, options);
+    }
+  </script>
+  </body>
+  </html>
+  """
+
+  def __init__(self, htmlfilename: str):
+    self.htmlfilename = htmlfilename  
+    self.sources: List[str] = []
+
+  def render(self, graph: CallGraph):
+    graphfilename = self.htmlfilename
+    graphfile = open(graphfilename, "w")
+    self.file = graphfile
+
+    self.graph_write_html_header()
+
+    self.generate_callee_row(graph.root)
+    self.generate_caller_row(graph.root)  
+
+    self.graph_write_html_footer()
+    self.file.close()
+
+  def graph_write_html_header(self):
+    self.file.write(GraphFileHtmlSankeyRender.html_header)
+
+  def graph_write_html_footer(self):
+    self.file.write(GraphFileHtmlSankeyRender.html_footer)
+
+  def get_available_dst_symbol(self, symbol: str):
+    dst_symbol = symbol
+    while dst_symbol in self.sources:
+      dst_symbol = dst_symbol + "~"
+    
+    return dst_symbol
+
+  def generate_one_row(self, source: CallGraphNode, target: CallGraphNode, weight: int):
+    src_symbol = source.symbol
+    dst_symbol = target.symbol
+
+    if src_symbol not in self.sources:
+      self.sources.append(src_symbol)
+
+    dst_symbol = self.get_available_dst_symbol(dst_symbol)
+    target.symbol = dst_symbol
+
+    self.file.write(f"        ['{src_symbol}', '{dst_symbol}', {weight}],\n")
+
+  def generate_callee_row(self, root: CallGraphNode):
+    callees = root.callees
+
+    for item in callees:
+      self.generate_one_row(item, root, item.cycles)
+      self.generate_callee_row(item)
+      self.sources.clear()
+
+  def generate_caller_row(self, root: CallGraphNode):
+    callers = root.callers
+
+    for item in callers:
+      self.generate_one_row(root, item, item.cycles)
+      self.generate_caller_row(item)
+      self.sources.clear()
+
+
+
+
 def trace_end():
   print(graph)
+
+  graphfilename = args.graphfilename
+  if not os.path.isabs(graphfilename):
+      script_dir = os.path.dirname(os.path.abspath(__loader__.path))
+      graphfilename = os.path.join(script_dir, graphfilename)
+
+  render = GraphFileHtmlSankeyRender(graphfilename)
+  render.render(graph)
