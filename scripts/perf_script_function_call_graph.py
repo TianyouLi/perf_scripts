@@ -186,14 +186,16 @@ class CallGraph(object):
         result.append(index)
     return result
 
-  def add_caller_nodes(self, callerchain: List, cycles: int):
+  def add_caller_nodes(self, comm, dso, callerchain: List, cycles: int):
     node: CallGraphNode = self.root
     for item in callerchain:
-        if 'sym' in item and item['sym'] is not None:
-          symbol = item['sym']['name']
-        else:
-          symbol = hex(item['ip'])
-        node = node.add_caller(symbol, cycles)
+      if 'sym' in item and item['sym'] is not None:
+        symbol = item['sym']['name']
+      else:
+        symbol = hex(item['ip'])
+      node = node.add_caller(symbol, cycles)
+    node.add_caller(comm,cycles).add_caller(dso, cycles)
+
   def add_callee_nodes(self, calleechain: List, cycles: int):
     node: CallGraphNode = self.root
     for item in reversed(calleechain):
@@ -203,11 +205,37 @@ class CallGraph(object):
         symbol = hex(item['ip'])
       node = node.add_callee(symbol, cycles)  
 
-  def process_event(self, event):
+  def create_or_update_root(self, event):
     if self.root is None:
       self.root = CallGraphNode(event.symbol, event.cycles, 0)
     else:
       self.root.cycles += event.cycles
+
+  # Suppose A is the symbol event, generate call tree with B A B F A C D as
+  # A -> B
+  #   <- B <- F <- A <- C <- D
+  # Usually the function B could be the interrupt hanlder, event symbol is A
+  # but the callchain not start with A  
+  def generate_direct_call_tree(self, event):
+    self.create_or_update_root(event)
+
+    symbol_indexes = self.find_symbol_index_in_callchain(event)
+    first_index = symbol_indexes[0]
+
+    # add callee  
+    calleechain = event.callchain[0:first_index]
+    self.add_callee_nodes(calleechain, event.cycles)
+    # add caller
+    callerchain = event.callchain[first_index+1:]
+    self.add_caller_nodes(event.comm, event.dso, callerchain, event.cycles)
+
+  # Suppose A is the symbol event, generate call tree with B A B F A C D as
+  # A -> B
+  #   <- B <- F
+  #   <- C <- D
+  def generate_merged_call_tree(self, event):
+    self.create_or_update_root(event)
+
     symbol_indexes = self.find_symbol_index_in_callchain(event)
     if len(symbol_indexes) == 1:
       symbol_indexes.append(len(event.callchain) +1)
@@ -227,22 +255,32 @@ class CallGraph(object):
         calleechain = event.callchain[prev_index:cur_index]
         self.add_callee_nodes(calleechain, event.cycles)
       prev_index = cur_index +1
-      
+class CallGraphType(Enum):
+  DIRECT = 1
+  MERGED = 2
 
 graph: CallGraph = None
-def create_callgraph_for_function(event, symbol: str):
-  global graph 
+def create_callgraph_for_function(event, symbol: str, gtype: CallGraphType): 
+  global graph
   if graph is None:
     graph = CallGraph(symbol)
-  if event.symbol == symbol:
-    graph.process_event(event)
+  if event.symbol != symbol:
+    return
   
+  if gtype is CallGraphType.DIRECT:
+      graph.generate_direct_call_tree(event)
+  elif gtype is CallGraphType.MERGED:
+      graph.generate_merged_call_tree(event)
+  else:
+    raise TypeError(f"{gtype} is not a valid CallGraphType") 
+  
+
 def process_event(param_dict):
   global events
-    
+
   event = create_event_with_more_info(param_dict)
   if event.symbol == args.symbol and event.name == args.event_type:
-    graph = create_callgraph_for_function(event, args.symbol)
+    create_callgraph_for_function(event, args.symbol, CallGraphType.DIRECT)
   if event.name not in events:
     events[event.name] = {"total":event.sample["period"], "el": [event]}
   else:
@@ -341,7 +379,7 @@ class GraphFileHtmlSankeyRender(object):
 
     for item in callees:
       if root.cycles / item.cycles > 1000:
-        continue
+         continue
       self.generate_one_row(item, root, item.cycles)
       self.generate_callee_row(item)
       self.sources.clear()
@@ -355,9 +393,6 @@ class GraphFileHtmlSankeyRender(object):
       self.generate_one_row(root, item, item.cycles)
       self.generate_caller_row(item)
       self.sources.clear()
-
-
-
 
 def trace_end():
   print(graph)
