@@ -147,6 +147,7 @@ class CallGraph(object):
         calleechain = event.callchain[prev_index:cur_index]
         self.add_callee_nodes(calleechain, event.cycles)
       prev_index = cur_index +1
+      
 class CallGraphType(Enum):
   DIRECT = 1
   MERGED = 2

@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./scripts",
+        "/usr/libexec/perf-core/scripts/python/Perf-Trace-Util/lib/Perf/Trace"
+    ]
+}
