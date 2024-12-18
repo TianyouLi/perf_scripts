@@ -141,13 +141,13 @@ class CallGraph(object):
         next_index = len(event.callchain) +1
       # add caller
       callerchain = event.callchain[cur_index+1:next_index-1]
-      self.add_caller_nodes(callerchain, event.cycles)
+      self.add_caller_nodes(event.comm, event.dso, callerchain, event.cycles)
       if prev_index == 0:
         # add callee
         calleechain = event.callchain[prev_index:cur_index]
         self.add_callee_nodes(calleechain, event.cycles)
       prev_index = cur_index +1
-      
+
 class CallGraphType(Enum):
   DIRECT = 1
   MERGED = 2

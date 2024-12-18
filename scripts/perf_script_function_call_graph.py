@@ -25,6 +25,7 @@ from EventClass import *
 
 from call_graph_defs import *
 from html_sankey_render import *
+from html_flamegraph_render import *
 
 events = dict()
 
@@ -146,4 +147,5 @@ def trace_end():
       graphfilename = os.path.join(script_dir, graphfilename)
 
   render = GraphFileHtmlSankeyRender(graphfilename)
+  #render = GraphFileHtmlFlameGraphRender(graphfilename)
   render.render(graph)
