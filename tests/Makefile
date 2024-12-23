@@ -8,7 +8,7 @@ hierarchylock:
 
 perf: spawn hierarchylock
 #	perf record -e "cpu/mem-loads,ldlat=30/P,cpu/mem-stores/P,cycles:pp,instructions:pp" -W -d --phys-data --sample-cpu -a -g --call-graph dwarf -F99 -o perf.data.spawn -- ./spawn 10000
-	perf record -e "cpu/mem-loads,ldlat=30/P,cpu/mem-stores/P,cycles:pp,instructions:pp" -W -d --phys-data --sample-cpu -a -g --call-graph dwarf -F99 -o perf.data.lock -- ./hierarchylock -t 160 -l 1 -i 100000
+	perf record -e "cpu/mem-loads,ldlat=30/P,cpu/mem-stores/P,cycles:P,instructions:P" -W -d --phys-data --sample-cpu -a -g --call-graph dwarf -F99 -o perf.data.lock -- ./hierarchylock -t 160 -l 1 -i 100000
 
 clean: clean_binary clean_perf
 

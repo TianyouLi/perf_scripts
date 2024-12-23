@@ -57,7 +57,9 @@ parser.add_argument("-e", "--event-type",
                     action="store",
                     dest="event_type",
                     type=str,
-                    default="cycles:pp")              
+#                    default="cpu/mem-stores/P"
+                    default="cycles:P"
+                    )              
 
 parser.add_argument("-g", "--graph",
                     help="generate the graph for particular function, \
@@ -81,7 +83,25 @@ def get_dict_as_string(a_dict, delimiter=' '):
 def trace_unhandled(event_name, context, event_fields_dict, perf_sample_dict):
   print(get_dict_as_string(event_fields_dict))
   print('Sample: {'+get_dict_as_string(perf_sample_dict['sample'], ', ')+'}')
-  
+
+def try_decode_raw(event, raw_buf):
+  if len(raw_buf) < 80:
+    return
+
+  tmp_buf=raw_buf[0:80]
+  flags, ip, ax, bx, cx, dx, si, di, bp, sp = struct.unpack('QQQQQQQQQQ', tmp_buf)
+  event.flags = flags
+  event.ip    = ip
+  event.ax    = ax
+  event.bx    = bx
+  event.cx    = cx
+  event.dx    = dx
+  event.si    = si
+  event.di    = di
+  event.bp    = bp
+  event.sp    = sp
+
+
 def create_event_with_more_info(param_dict):
   event_attr = param_dict["attr"]
   sample     = param_dict["sample"]
@@ -103,6 +123,7 @@ def create_event_with_more_info(param_dict):
 
   # Create the event object and insert it to the right table in database
   event = create_event(name, comm, dso, symbol, event_attr)
+  try_decode_raw(event,event_attr)
   event.sample = sample
   event.cycles = event.sample["period"]
   event.attr = event_attr
