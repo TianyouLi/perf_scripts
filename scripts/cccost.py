@@ -13,7 +13,6 @@ import os
 import sys
 import argparse 
 import ipaddress
-import pprint
 import debugpy as dbg
 
 from typing import List
@@ -22,7 +21,6 @@ from typing import List
 sys.path.append(os.environ['PERF_EXEC_PATH'] + \
   '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
 
-from perf_trace_context import *
 from Core import *
 from EventClass import *
 

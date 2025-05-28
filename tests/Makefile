@@ -23,5 +23,5 @@ clean_binary:
 test: 
 	perf script -s python:../scripts/perf_script_function_call_graph.py -i perf.data.lock
 debug:
-	perf script -s python:../scripts/perf_script_function_call_graph.py -i perf.data.lock -- -d -l 10.239.147.41 -p 5678
+	perf script -s python:../scripts/flamegraph.py -i perf.data.lock -- -d -l 10.239.147.41 -p 5678 -i perf.data.lock
 

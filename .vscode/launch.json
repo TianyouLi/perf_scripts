@@ -12,10 +12,11 @@
                 "host": "10.239.147.41",
                 "port": 5678
             },
+            "justMyCode": false,
             "pathMappings": [
                 {
-                    "localRoot": "${workspaceFolder}",
-                    "remoteRoot": "."
+                    "localRoot": "${workspaceFolder}/",
+                    "remoteRoot": "/home/tli7/sandbox/perf_scripts"
                 }
             ]
         }
