@@ -19,9 +19,12 @@ clean_binary:
 	rm spawn -rf
 	rm hierarchylock -rf
 
+.PHONY: test_%
+test_%: ../scripts/%.py
+	perf script -s python:../scripts/$*.py -i perf.data.lock -- -i perf.data.lock
 
-test: 
-	perf script -s python:../scripts/perf_script_function_call_graph.py -i perf.data.lock
-debug:
-	perf script -s python:../scripts/flamegraph.py -i perf.data.lock -- -d -l 10.239.147.41 -p 5678 -i perf.data.lock
+.PHONY: debug_%
+debug_%:
+	perf script -s python:../scripts/$*.py -i perf.data.lock -- -d -l 10.239.147.41 -p 5678 -i perf.data.lock
+
 

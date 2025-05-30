@@ -102,8 +102,11 @@ class FlameGraphCLI:
             dbg.breakpoint()
 
     def process_event(self, event):
-        if event.get("ev_name") != self.args.event_type: 
+        # ignore events where the event type does not match
+        # the one specified by the user
+        if self.args.event_type and event.get("ev_name") != self.args.event_type: 
             return
+        
         pid = event.get("sample", {}).get("pid", 0)
         # event["dso"] sometimes contains /usr/lib/debug/lib/modules/*/vmlinux
         # for user-space processes; let's use pid for kernel or user-space distinction
@@ -137,7 +140,11 @@ class FlameGraphCLI:
                 output = subprocess.check_output(["perf", "script", "--header-only", "-i", self.args.input])
             else:
                 output = subprocess.check_output(["perf", "report", "--header-only"])
-            return output.decode("utf-8")
+            
+            result = output.decode("utf-8")
+            if self.args.event_type:
+                result += "\nFocused event type: " + self.args.event_type
+            return result
         except Exception as err:  # pylint: disable=broad-except
             print("Error reading report header: {}".format(err), file=sys.stderr)
             return ""
@@ -269,7 +276,7 @@ if __name__ == "__main__":
                     action="store",
                     dest="event_type",
                     type=str,
-                    default="cycles:P")  
+                    default="")
     
     cli_args = parser.parse_args()
     cli = FlameGraphCLI(cli_args)
